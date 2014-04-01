@@ -1,0 +1,1 @@
+javac -cp ..\..\..\libs\robocode.jar Ahchoo.java
