@@ -3,19 +3,19 @@ package qwaker00;
 import robocode.*;
 import robocode.util.Utils;
 import java.awt.*;
-import java.awt.geom.Rectangle2D;
 import java.util.*;
 
 public class Ahchoo extends AdvancedRobot
 {
+    static final double WALL_MARGIN = 160;
     static final double RAND_CHANGE_DIR = 5;
     static final double RAM_INDEX_MAX = 20;
     static final double FAR_DIST = 350;
     static final double CLOSE_DIST = 300;
     static Random R = new Random();
     static Enemy E = new Enemy();
-    //static Map<String, GFHolder[][][]> gfdata = null;
 
+    
     public void run() {
         Init();
         while (true) {
@@ -27,26 +27,6 @@ public class Ahchoo extends AdvancedRobot
     }
 
     void Init() {
-      /*  if (gfdata == null) {
-           gfdata = new HashMap<String, GFHolder[][][]>();
-           try {
-                ObjectInputStream in = new ObjectInputStream(new GZIPInputStream(new FileInputStream(new File("C:\\Temp\\gf.dat"))));
-                Object o = in.readObject();
-                if (o instanceof Map) {
-                    gfdata = (Map<String, GFHolder[][][]>)o;
-                }
-            } catch (Exception ex) {
-                System.out.println("Reading error: " + ex.getMessage());
-            }
-        }
-*/
-        if (gfStats == null) {
-            gfStats = new GFHolder[10][3][3];
-            for (int i = 0; i < 10; ++i)
-                for (int j = 0; j < 3; ++j)
-                    for (int k = 0; k < 3; ++k)
-                        gfStats[i][j][k] = new GFHolder();
-        }
         setColors(Color.black, Color.gray, Color.gray, Color.yellow, Color.white);
         E.Init();
         E.me = this;
@@ -55,6 +35,11 @@ public class Ahchoo extends AdvancedRobot
         EWaves = new ArrayList<Wave>();
         shotMask = 0;
         revId = 0;
+        if (gfStats == null) {
+            gfStats = new GFHolder[10][3][3];
+            for (int i = 0; i < 10; ++i) for (int j = 0; j < 3; ++j) for (int k = 0; k < 3; ++k)
+                gfStats[i][j][k] = new GFHolder();
+        }
         stopudov = new ArrayList<Bullet>();
         setAdjustGunForRobotTurn(true);
         setAdjustRadarForGunTurn(true);
@@ -66,6 +51,12 @@ public class Ahchoo extends AdvancedRobot
         execute();
     }
 
+
+    
+    /*
+     *  I'm watching you
+     */
+
     int scanDirection = 1;
 
     void RadarFolower() {
@@ -73,19 +64,18 @@ public class Ahchoo extends AdvancedRobot
             setTurnRadarRight(45 * scanDirection);
         } else {
             double diffAngle = Utils.normalRelativeAngle(getHeadingRadians()
-                            - getRadarHeadingRadians()
-                            + E.bearing
-            );
+                                                         - getRadarHeadingRadians()
+                                                         + E.bearing
+                                                        );
             if (diffAngle < 0) scanDirection = -1; else scanDirection = 1;
             setTurnRadarRightRadians(diffAngle);
         }
     }
     
 
-    
     int moveDirection = 1, ramIndex = 0, minI, minJ;
     double minDiff;
-    double moveX, moveY;
+    double wallResistX, wallResistY, moveX, moveY;
     double minD;
     int shotMask = 0, revId = 0;
     ArrayList<Bullet> stopudov;
@@ -95,6 +85,17 @@ public class Ahchoo extends AdvancedRobot
     static int mShotTotal = 0, mHitTotal = 0;
     static int stopudovHit = 0, stopudovShot = 0;
                 
+    double calcResist(double dist){
+        dist = Math.min(dist, WALL_MARGIN);
+        return Math.exp( (WALL_MARGIN  - dist) / 20 ) - 1;
+    }
+    
+
+    void WallResistEvent() {
+        wallResistX = calcResist(getX()) - calcResist(getBattleFieldWidth() - getX());
+        wallResistY = calcResist(getY()) - calcResist(getBattleFieldHeight() - getY());
+    }
+            
     void BodyMover() {
         while (!Waves.isEmpty() && Waves.get(0).Check(E.x, E.y, getTime())) {
             Waves.remove(0);
@@ -107,7 +108,9 @@ public class Ahchoo extends AdvancedRobot
         minI = -1;
         minJ = -1;
 
-        if(E.distance > 70 && R.nextDouble() * 100 < RAND_CHANGE_DIR) moveDirection *= -1;
+        WallResistEvent();
+                
+        if(R.nextDouble() * 100 < RAND_CHANGE_DIR) moveDirection *= -1;
                             
         if (E.seeNow) {
             if (E.energy == 0) {
@@ -126,6 +129,11 @@ public class Ahchoo extends AdvancedRobot
 
             if (E.IsEnergyDrop()) {
                 shotMask = (shotMask << 1) & 31;
+
+                //String shotMaskStr = Integer.toBinaryString(shotMask);
+                //while (shotMaskStr.length() < 6) shotMaskStr = "0" + shotMaskStr;
+                //System.out.println("ShotMask = " + shotMaskStr);
+
                 EWaves.add(new Wave(E.x, E.y, E.lastenergy - E.energy, getTime() - 1));
 
                 ++eShotTotal;
@@ -141,6 +149,7 @@ public class Ahchoo extends AdvancedRobot
             double relativeAng = Utils.normalRelativeAngle(realHeading - absEnemyAngle);
         
             if (relativeAng > Math.PI * 5 / 6 || relativeAng < - Math.PI * 5 / 6) {
+                moveDirection *= -1;
                 relativeAng = Utils.normalRelativeAngle(absEnemyAngle - realHeading - Math.PI);
             }
             
@@ -160,7 +169,8 @@ public class Ahchoo extends AdvancedRobot
             moveX = 0;
             moveY = 1;
         }
-
+        
+        
         for (int i = 0; i < Waves.size(); ++i) {
             for (int j = 0; j < EWaves.size(); ++j) {
                 double x1 = EWaves.get(j).startX;
@@ -205,18 +215,16 @@ public class Ahchoo extends AdvancedRobot
             }
         }
 
-        double resultAngle = Math.atan2(moveX, moveY);
-        Rectangle2D field = new Rectangle2D.Double(36, 36, getBattleFieldWidth()-72, getBattleFieldHeight()-72);
-        while (!field.contains(getX()+Math.sin(resultAngle)*150, getY()+Math.cos(resultAngle)*150)) {
-            resultAngle += moveDirection * .02;
-        }
-        moveX = Math.sin(resultAngle) * 150;
-        moveY = Math.cos(resultAngle) * 150;
+
+        moveX += wallResistX;
+        moveY += wallResistY;        
         double diffAngle = Utils.normalRelativeAngle(Math.PI / 2 - Math.atan2(moveY, moveX) + ((moveDirection < 0) ? Math.PI : 0)  - getHeadingRadians());
 
         if (diffAngle > Math.PI * 5 / 6 || diffAngle < - Math.PI * 5 / 6) {
+            moveDirection *= -1;
             diffAngle = Utils.normalRelativeAngle(diffAngle + Math.PI);
         }
+
         if (ReverseStrategy) {
             setColors(Color.black, Color.gray, Color.gray, Color.yellow, Color.white);
         } else {
@@ -235,10 +243,10 @@ public class Ahchoo extends AdvancedRobot
     static int direction = 1;
 
     void GunShooter() {
-        if (!E.seeNow || ramIndex > 0) return;
+        if (!E.seeNow || ramIndex > 0) return;          
 
         double bPower = 600 / E.distance;
-        bPower = Math.min(getEnergy() / 3, Math.max(0.1, Math.min(3, bPower)));
+        bPower = Math.min(getEnergy() / 3, Math.max(0.1, Math.min(2, bPower)));
 
         if (E.velocity != 0) {
             if (Math.sin(E.heading - getHeadingRadians() - E.bearing) * E.velocity < 0)
@@ -246,6 +254,8 @@ public class Ahchoo extends AdvancedRobot
             else
                 direction = 1;
         }
+
+
 
         int dFactor = (int)Math.floor(E.distance / 200);
         int xFactor = (E.x < getBattleFieldWidth() / 6.) ? 0 : ((E.x > getBattleFieldWidth() * 5. / 6.) ? 2 : 1);
@@ -336,19 +346,6 @@ public class Ahchoo extends AdvancedRobot
 
     public void onScannedRobot(ScannedRobotEvent e) {
         E.Log(e);
-/*        if (gfStats == null) {
-            if (gfdata.containsKey(E.name)) {
-                gfStats = gfdata.get(E.name);
-                System.out.println("Get gfdata from file for " + E.name);
-            } else {
-               gfStats = new GFHolder[10][3][3];
-                for (int i = 0; i < 10; ++i)
-                    for (int j = 0; j < 3; ++j)
-                        for (int k = 0; k < 3; ++k)
-                            gfStats[i][j][k] = new GFHolder();
-                System.out.println("Create new gfdata for " + E.name);
-            }
-        }*/
     }
 
     public void onBattleEnded(BattleEndedEvent e) {
@@ -356,17 +353,6 @@ public class Ahchoo extends AdvancedRobot
         System.out.println("My stat   : " + mHitTotal + "/" + mShotTotal + " " + (mHitTotal*100/mShotTotal) + "%");
         if (stopudovShot > 0)
             System.out.println("Close shot: " + stopudovHit + "/" + stopudovShot + " " + (stopudovHit*100/stopudovShot) + "%");
-
-/*        gfdata.put(E.name, gfStats);
-        try {
-            OutputStream o = new FileOutputStream(new File("C:\\Temp\\gf.dat"));
-            ObjectOutputStream out = new ObjectOutputStream(new GZIPOutputStream(o));
-            out.writeObject(gfdata);
-            out.close();
-        } catch (Exception ex) {
-            System.out.println(ex.getMessage());
-        }
-  */      //new InputStreamReader(new FileInputStream(this.getDataFile("gf.dat")));
     }
 
     public void onRobotDeath(RobotDeathEvent e){
@@ -414,3 +400,4 @@ public class Ahchoo extends AdvancedRobot
         ++mHitTotal;
     }
 }
+                                                                                                                                                                                                                                                                                                                                        
